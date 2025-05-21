@@ -1,11 +1,11 @@
 # main.py
 from RBF import RBFNetwork
-from PSO import PSOTrainer
+from PSO_v2 import PSOTrainer
 from playground import Playground
 import matplotlib.pyplot as plt
 
 def main():
-    trainer = PSOTrainer(n_particles=1000, n_generations=100, rbf_hidden=6)
+    trainer = PSOTrainer(n_particles=200, n_generations=100, rbf_hidden=6)
     result = trainer.train()
 
     # 不論成功與否，都要展示最佳結果
