@@ -64,8 +64,7 @@ class PSOTrainer:
                         self.global_best_fitness = fitness
                         self.global_best_position = particle.position.copy()
                         self.success_particle = particle
-                    print(f"✅ Particle reached destination in {fitness} steps!")
-                    # 成功直接 early stop
+                    print(f"✅ Particle reached destination in generation {gen}!")
                     return self.success_particle
 
                 if fitness < particle.best_fitness:
@@ -76,20 +75,84 @@ class PSOTrainer:
                     self.global_best_fitness = fitness
                     self.global_best_position = particle.position.copy()
 
-            # 更新每個粒子
+            # 計算本代動態慣性權重
+            w_max, w_min = 0.9, 0.4
+            w = w_max - (w_max - w_min) * (gen / self.n_generations)
+            c1, c2 = 1.5, 1.5
+
+            # 更新粒子
             for particle in self.particles:
-                inertia = 0.5
-                cognitive = 1.5
-                social = 1.5
                 r1, r2 = np.random.rand(), np.random.rand()
+                gbest = self.global_best_position
+
+                # 🏃‍♂️ 若靠近 gbest，讓他逃跑
+                dist_to_gbest = np.linalg.norm(particle.position - gbest)
+                if dist_to_gbest < 0.1:
+                    particle.velocity -= 0.5 * (gbest - particle.position)
+
+                # 標準 PSO 更新公式（含動態慣性）
                 particle.velocity = (
-                    inertia * particle.velocity +
-                    cognitive * r1 * (particle.best_position - particle.position) +
-                    social * r2 * (self.global_best_position - particle.position)
+                    w * particle.velocity +
+                    c1 * r1 * (particle.best_position - particle.position) +
+                    c2 * r2 * (gbest - particle.position)
                 )
                 particle.position += particle.velocity
 
-            print(f"📉 Best fitness this gen: {self.global_best_fitness:.2f}")
+            # 🧬 Mutation（每 10 代一次）
+            if gen % 10 == 0 and gen > 0:
+                for p in self.particles:
+                    if np.random.rand() < 0.2:  # 20% 機率
+                        noise = np.random.normal(0, 0.2, size=p.position.shape)
+                        p.position += noise
+
+            # 💥 重啟太差的粒子（fitness 明顯差）
+            for p in self.particles:
+                if p.best_fitness > self.global_best_fitness * 2:
+                    if np.random.rand() < 0.1:
+                        print("🧹 Restarting poor particle.")
+                        p.position = np.random.uniform(-1, 1, size=p.position.shape)
+                        p.velocity = np.zeros_like(p.velocity)
+                        p.best_fitness = float('inf')
+
+            print(f"📉 Best fitness this gen: {self.global_best_fitness:.4f}")
 
         print("❌ No particle reached destination after all generations.")
         return self.success_particle if self.success_particle else None
+
+    def train_one_generation(self, gen):
+        w_max, w_min = 0.9, 0.4
+        w = w_max - (w_max - w_min) * (gen / self.n_generations)
+        c1, c2 = 1.5, 1.5
+
+        for particle in self.particles:
+            net = RBFNetwork(n_hidden=self.rbf_hidden)
+            net.set_parameters(particle.position)
+            fitness, success = self.simulate(net)
+
+            if success and fitness < self.global_best_fitness:
+                self.global_best_fitness = fitness
+                self.global_best_position = particle.position.copy()
+                self.success_particle = particle
+
+            if fitness < particle.best_fitness:
+                particle.best_fitness = fitness
+                particle.best_position = particle.position.copy()
+
+            if fitness < self.global_best_fitness:
+                self.global_best_fitness = fitness
+                self.global_best_position = particle.position.copy()
+
+        for particle in self.particles:
+            r1, r2 = np.random.rand(), np.random.rand()
+            gbest = self.global_best_position
+            dist = np.linalg.norm(particle.position - gbest)
+            if dist < 0.1:
+                particle.velocity -= 0.5 * (gbest - particle.position)
+
+            particle.velocity = (
+                w * particle.velocity +
+                c1 * r1 * (particle.best_position - particle.position) +
+                c2 * r2 * (gbest - particle.position)
+            )
+            particle.position += particle.velocity
+
